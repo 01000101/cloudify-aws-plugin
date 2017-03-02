@@ -438,7 +438,6 @@ class TestSecurityGroup(testtools.TestCase):
         group_object = ec2_client.create_security_group(
                 'dummy',
                 'this is test')
-        # setattr(group_object, 'vpc_id', 'vpc-abcd1234')
         ctx.node.properties['rules'][0]['src_group_id'] = group_object.id
         with mock.patch(
                 'cloudify_aws.ec2.securitygroup.'

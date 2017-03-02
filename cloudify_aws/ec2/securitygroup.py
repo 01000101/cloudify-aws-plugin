@@ -22,7 +22,7 @@ import ipaddress
 # Cloudify imports
 from cloudify import ctx
 from cloudify.decorators import operation
-from cloudify_aws.base import AwsBaseNode, AwsBaseRelationship
+from cloudify_aws.base import AwsBaseNode
 from cloudify_aws import utils, constants
 from cloudify.exceptions import NonRecoverableError
 
@@ -338,91 +338,3 @@ class SecurityGroup(AwsBaseNode):
                     clean_rules.remove(existing_rule)
 
         return clean_rules
-
-
-class SecurityGroupUsesRuleConnection(AwsBaseRelationship):
-
-    def __init__(self, client=None):
-        super(SecurityGroupUsesRuleConnection, self).__init__(client=client)
-        self.source_get_all_handler = {
-            'function': self.client.get_all_security_groups(),
-            'argument':
-                '{0}_ids'.format(constants.SECURITYGROUP['AWS_RESOURCE_TYPE'])
-        }
-
-    def associate(self, args=None, **_):
-
-        ctx.logger.info(
-                'adding rule to security group {0}'
-                .format(self.source_resource_id))
-
-        if 'rules' not in ctx.source.instance.runtime_properties:
-            return self._add_new_rule()
-        else:
-            if ctx.target.node.properties['rule'] not in \
-                    [ctx.source.instance.runtime_properties['rules']]:
-                return self._add_new_rule()
-
-        ctx.logger.info('Rule already exists in security group {0}.'
-                        .format(self.source_resource_id))
-        return False
-
-    def _add_new_rule(self):
-
-        for property in ctx.target.node.properties['rule']:
-            if 'egress' in property:
-                ctx.source.instance.runtime_properties.update(
-                        {'egress':
-                         ctx.target.node.properties['rule']})
-            else:
-                ctx.source.instance.runtime_properties.update(
-                        {'ingress':
-                         ctx.target.node.properties['rule']})
-
-        return True
-
-    def disassociate(self, args=None, **_):
-
-        ctx.logger.info(
-                'removing rule from security group {0}'
-                .format(self.source_resource_id))
-
-        for property in ctx.target.node.properties['rule']:
-            if 'egress' in property:
-                ctx.source.instance.runtime_properties\
-                    .pop('egress', 'Rule doesnt exists in security group {0}.'
-                         .format(self.source_resource_id))
-            else:
-                ctx.source.instance.runtime_properties\
-                    .pop('ingress', 'Rule doesnt exists in security group {0}.'
-                         .format(self.source_resource_id))
-
-        return True
-
-    def associate_helper(self, args=None):
-
-        ctx.logger.info(
-                'Attempting to associate rule to {0}.'
-                .format(self.source_resource_id))
-        if self.associate(args):
-            return self.post_associate()
-
-    def disassociate_helper(self, args=None):
-
-        ctx.logger.info(
-                'Attempting to disassociate rule from {0}.'
-                .format(self.source_resource_id))
-        if self.disassociate(args):
-            return self.post_disassociate()
-
-    def post_associate(self):
-        ctx.logger.info(
-                'Associated rule with {0}.'
-                .format(self.source_resource_id))
-        return True
-
-    def post_disassociate(self):
-        ctx.logger.info(
-                'Disassociated rule from {0}.'
-                .format(self.source_resource_id))
-        return True
