@@ -391,9 +391,10 @@ class Instance(AwsBaseNode):
     def _handle_userdata(self, parameters):
 
         existing_userdata = parameters.get('user_data')
+        ctx.logger.info('Using cloudify_agent params: %s' %
+                        ctx.node.properties.get('cloudify_agent'))
         install_agent_userdata = ctx.agent.init_script(
-            agent_config=ctx.node.properties.get('agent_config'),
-            cloudify_agent=ctx.node.properties.get('cloudify_agent'))
+            ctx.node.properties.get('cloudify_agent'))
 
         if not (existing_userdata or install_agent_userdata):
             return parameters
