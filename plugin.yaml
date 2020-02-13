@@ -1062,6 +1062,31 @@ data_types:
         description: http://boto3.readthedocs.io/en/latest/reference/services/ecs.html#ECS.Client.register_task_definition
         default: {}
 
+  cloudify.datatypes.aws.EKS.Cluster.config:
+    properties:
+      Name:
+        type: string
+        description: The unique name to give to your cluster.
+        required: true
+      RoleArn:
+        type: string
+        description: |
+          The Amazon Resource Name (ARN) of the IAM role that provides 
+          permissions for Amazon EKS to make calls to other AWS API 
+          operations on your behalf.
+        required: false
+      resourcesVpcConfig:
+        description: |
+          The VPC configuration used by the cluster control plane. Amazon EKS 
+          VPC resources have specific requirements to work properly with 
+          Kubernetes. You must specify at least two subnets. You can specify 
+          up to five security groups, but we recommend that you use a 
+          dedicated security group for your cluster control plane.
+        default: {}
+      kwargs:
+        description: https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/eks.html#EKS.Client.create_cluster
+        default: {}
+
 dsl_definitions:
 
   use_external_resource_desc: &use_external_resource_desc >
@@ -3268,6 +3293,29 @@ node_types:
           implementation: aws.cloudify_aws.ecs.resources.task_definition.delete
           inputs: *operation_inputs
 
+  cloudify.nodes.aws.eks.Cluster:
+    derived_from: cloudify.nodes.Root
+    properties:
+      <<: *external_resource
+      <<: *client_config
+      <<: *resource_id
+      resource_config:
+        description: >
+          Configuration key-value data to be passed as-is to the corresponding
+          Boto3 method. Key names must match the case that Boto3 requires.
+        type: cloudify.datatypes.aws.EKS.Cluster.config
+        required: false
+    interfaces:
+      cloudify.interfaces.lifecycle:
+        create:
+          implementation: aws.cloudify_aws.eks.resources.cluster.prepare
+          inputs: *operation_inputs
+        configure:
+          implementation: aws.cloudify_aws.eks.resources.cluster.create
+          inputs: *operation_inputs
+        delete:
+          implementation: aws.cloudify_aws.eks.resources.cluster.delete
+          inputs: *operation_inputs
 
   ####
    # Swift Nodes

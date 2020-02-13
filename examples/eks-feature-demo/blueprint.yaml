@@ -1,0 +1,127 @@
+tosca_definitions_version: cloudify_dsl_1_3
+
+imports:
+  - https://getcloudify.org/spec/cloudify/5.0.5/types.yaml
+  - plugin:cloudify-aws-plugin
+
+inputs:
+
+  aws_access_key_id:
+    type: string
+    default: { get_secret: aws_access_key_id }
+
+  aws_secret_access_key:
+    type: string
+    default: { get_secret: aws_secret_access_key }
+
+  aws_region_name:
+    type: string
+    default: { get_secret: aws_region_name }
+
+  eks_cluster_name:
+    type: string
+    default: cfy-cluster
+
+dsl_definitions:
+
+  client_config: &client_config
+    aws_access_key_id: { get_input: aws_access_key_id }
+    aws_secret_access_key: { get_input: aws_secret_access_key }
+    region_name: { get_input: aws_region_name }
+
+node_templates:
+
+  eks_service_iam_stack:
+    type: cloudify.nodes.aws.CloudFormation.Stack
+    properties:
+      client_config: *client_config
+      resource_config:
+        kwargs:
+          StackName: cfy-eks-service-iam
+          Capabilities:
+          - CAPABILITY_NAMED_IAM
+          TemplateURL: https://amazon-eks.s3-us-west-2.amazonaws.com/cloudformation/2019-11-15/amazon-eks-service-role.yaml
+
+  eks_nodegroup_iam_stack:
+    type: cloudify.nodes.aws.CloudFormation.Stack
+    properties:
+      client_config: *client_config
+      resource_config:
+        kwargs:
+          StackName: cfy-eks-nodegroup-iam
+          Capabilities:
+          - CAPABILITY_NAMED_IAM
+          TemplateURL: https://amazon-eks.s3-us-west-2.amazonaws.com/cloudformation/2019-11-15/amazon-eks-nodegroup-role.yaml
+
+  eks_network_stack:
+    type: cloudify.nodes.aws.CloudFormation.Stack
+    properties:
+      client_config: *client_config
+      resource_config:
+        kwargs:
+          StackName: cfy-eks-vpc
+          TemplateURL: https://cfy-cfn-templates.s3.amazonaws.com/eaas-eks/amazon-eks-vpc-private-subnets.yaml
+
+  eks_cluster:
+    type: cloudify.nodes.aws.CloudFormation.Stack
+    properties:
+      client_config: *client_config
+      resource_config:
+        kwargs:
+          StackName: { get_input: eks_cluster_name }
+          Parameters:
+          - ParameterKey: EKSClusterName
+            ParameterValue: { get_input: eks_cluster_name }
+          - ParameterKey: EKSServiceRoleArn
+            ParameterValue: { get_attribute: [ eks_service_iam_stack, Outputs, 0, OutputValue ] }
+          - ParameterKey: EKSPublicSubnet01Id
+            ParameterValue: { get_attribute: [ eks_network_stack, Outputs, 0, OutputValue ] }
+          - ParameterKey: EKSPublicSubnet02Id
+            ParameterValue: { get_attribute: [ eks_network_stack, Outputs, 1, OutputValue ] }
+          TemplateBody: |
+            AWSTemplateFormatVersion: "2010-09-09"
+            Description: EKS Cluster
+            Parameters:
+              EKSClusterName:
+                Type: String
+              EKSServiceRoleArn:
+                Type: String
+              EKSPublicSubnet01Id:
+                Type: String
+              EKSPublicSubnet02Id:
+                Type: String
+            Resources:
+              ekscluster:
+                Type: 'AWS::EKS::Cluster'
+                Properties:
+                  Name:
+                    Ref: EKSClusterName
+                  Version: '1.14'
+                  RoleArn: 
+                    Ref: EKSServiceRoleArn
+                  ResourcesVpcConfig:
+                    SubnetIds:
+                    - Ref: EKSPublicSubnet01Id
+                    - Ref: EKSPublicSubnet02Id
+            Outputs:
+              arn:
+                Description: Cluster ARN
+                Value: !GetAtt ekscluster.Arn
+              endpoint:
+                Description: Cluster endpoint URL
+                Value: !GetAtt ekscluster.Endpoint
+    relationships:
+    - type: cloudify.relationships.depends_on
+      target: eks_network_stack
+    - type: cloudify.relationships.depends_on
+      target: eks_service_iam_stack
+    - type: cloudify.relationships.depends_on
+      target: eks_nodegroup_iam_stack
+
+outputs:
+
+  Arn:
+    value: { get_attribute: [ eks_cluster, Outputs, 0, OutputValue ] }
+
+  Endpoint:
+    value: { get_attribute: [ eks_cluster, Outputs, 1, OutputValue ] }
